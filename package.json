@@ -1,0 +1,18 @@
+{
+  "name": "binance-arbitrage",
+  "version": "1.0.0",
+  "description": "A real-time arbitrage calculator for Binance",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "dependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-scripts": "^5.0.1"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.1.0"
+  }
+}
