@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 
 // 参考值
-const symbols = ["btcusdt", "ethusdt"];
 const spotWsBase = "wss://stream.binance.com:9443/ws";
 const contractWsBase = "wss://fstream.binance.com/ws";
 
@@ -10,18 +9,23 @@ export default function CustomRealtime() {
   const spotPrices = useRef({});
   const wsRefs = useRef({ spot: null, contract: null });
 
-  const [n, setN] = useState(300); // 本金默认300
-  const [k, setK] = useState(5); // 杠杆默认5
-  const [a, setA] = useState(0.4); // 现货滑点默认40%
-  const [b, setB] = useState(0.08); // 合约滑点默认8%
-  const [spotFeeRate, setSpotFeeRate] = useState(0.08);  // 现货手续费默认8%
-  const [futureFeeRate, setFutureFeeRate] = useState(0.1); // 合约手续费默认10%
-  const [borrowRate, setBorrowRate] = useState(0.01);     // 借贷利率默认1%
-  const [constantBasis, setConstantBasis] = useState(0.1); // 常驻基差默认0.1%
-  const [selectedSymbol, setSelectedSymbol] = useState('');
+  // 参数管理
+  const [n, setN] = useState(300); // 本金
+  const [k, setK] = useState(5); // 杠杆
+  const [a, setA] = useState(0.4); // 现货滑点
+  const [b, setB] = useState(0.08); // 合约滑点
+  const [spotFeeRate, setSpotFeeRate] = useState(0.08);  // 现货手续费
+  const [futureFeeRate, setFutureFeeRate] = useState(0.1); // 合约手续费
+  const [borrowRate, setBorrowRate] = useState(0.01);     // 借贷利率
+  const [constantBasis, setConstantBasis] = useState(0.1); // 常驻基差
+  const [selectedSymbol, setSelectedSymbol] = useState('btc'); // 默认选择BTC
+  const [symbols, setSymbols] = useState(["btcusdt", "ethusdt"]); // 动态的符号列表
   const [maxPosition, setMaxPosition] = useState(null);
   const [upperPrice, setUpperPrice] = useState(null);
   const [lowerPrice, setLowerPrice] = useState(null);
+
+  const [manualSpotPrice, setManualSpotPrice] = useState("");  // 手动现货价格
+  const [manualFuturePrice, setManualFuturePrice] = useState("");  // 手动合约价格
 
   const calculateScore = (basisRate, predictedFundingRate, leverage, periodNum) => {
     const tradingCost = (spotFeeRate + futureFeeRate) * leverage + borrowRate * leverage * periodNum / 2;
@@ -33,6 +37,15 @@ export default function CustomRealtime() {
       : grossProfit;
 
     return rawScore.toFixed(4);
+  };
+
+  const handleSymbolInput = () => {
+    // 1. 将输入的符号分割成数组，并补全每个符号的 USDT 后缀
+    const inputSymbols = selectedSymbol
+      .split(",") // 假设用户输入多个币种，用逗号分隔
+      .map(symbol => symbol.trim().toLowerCase() + 'usdt'); // 补全USDT后缀
+
+    setSymbols(inputSymbols); // 更新符号列表
   };
 
   useEffect(() => {
@@ -62,7 +75,7 @@ export default function CustomRealtime() {
       contractWs.send(
         JSON.stringify({
           method: "SUBSCRIBE",
-          params: symbols.map((s) => `${s}@ticker`), // 修复了这里
+          params: symbols.map((s) => `${s}@ticker`),
           id: 2,
         })
       );
@@ -113,11 +126,131 @@ export default function CustomRealtime() {
       wsRefs.current.spot?.close();
       wsRefs.current.contract?.close();
     };
-  }, [k, n, a, b, spotFeeRate, futureFeeRate, borrowRate, constantBasis]);
+  }, [k, n, a, b, spotFeeRate, futureFeeRate, borrowRate, constantBasis, symbols]);
 
   return (
-    <div className="container">
-      <table>
+    <div className="container" style={{ textAlign: 'center' }}>
+      {/* 输入框部分 */}
+      <div style={{ marginBottom: '20px' }}>
+        <label>
+          选择币种:
+          <input
+            type="text"
+            value={selectedSymbol}
+            onChange={(e) => setSelectedSymbol(e.target.value)}
+            placeholder="请输入币种（例如 BTC,ETH）"
+          />
+          <button onClick={handleSymbolInput} style={{ marginLeft: '10px' }}>查询</button>
+        </label>
+      </div>
+
+      {/* 用户自定义参数输入框 */}
+      <div style={{ marginBottom: '10px' }}>
+        <label>
+          本金 (n):
+          <input
+            type="number"
+            value={n}
+            onChange={(e) => setN(Number(e.target.value))}
+            min="0"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '10px' }}>
+        <label>
+          杠杆 (k):
+          <input
+            type="number"
+            value={k}
+            onChange={(e) => setK(Number(e.target.value))}
+            min="1"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '10px' }}>
+        <label>
+          现货滑点 (a):
+          <input
+            type="number"
+            value={a}
+            onChange={(e) => setA(Number(e.target.value))}
+            step="0.01"
+            min="0"
+            max="1"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '10px' }}>
+        <label>
+          合约滑点 (b):
+          <input
+            type="number"
+            value={b}
+            onChange={(e) => setB(Number(e.target.value))}
+            step="0.01"
+            min="0"
+            max="1"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '10px' }}>
+        <label>
+          现货手续费:
+          <input
+            type="number"
+            value={spotFeeRate}
+            onChange={(e) => setSpotFeeRate(Number(e.target.value))}
+            step="0.01"
+            min="0"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '10px' }}>
+        <label>
+          合约手续费:
+          <input
+            type="number"
+            value={futureFeeRate}
+            onChange={(e) => setFutureFeeRate(Number(e.target.value))}
+            step="0.01"
+            min="0"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '10px' }}>
+        <label>
+          借贷利率:
+          <input
+            type="number"
+            value={borrowRate}
+            onChange={(e) => setBorrowRate(Number(e.target.value))}
+            step="0.01"
+            min="0"
+          />
+        </label>
+      </div>
+
+      <div style={{ marginBottom: '10px' }}>
+        <label>
+          常驻基差:
+          <input
+            type="number"
+            value={constantBasis}
+            onChange={(e) => setConstantBasis(Number(e.target.value))}
+            step="0.01"
+            min="0"
+          />
+        </label>
+      </div>
+
+      {/* 显示结果的表格 */}
+      <table style={{ margin: '20px auto', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th>时间</th>
