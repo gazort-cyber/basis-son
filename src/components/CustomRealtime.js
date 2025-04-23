@@ -42,7 +42,7 @@ export default function CustomRealtime() {
       spotWs.send(
         JSON.stringify({
           method: "SUBSCRIBE",
-          params: symbols.map((s) => ${s}@ticker),
+          params: symbols.map((s) => `${s}@ticker`),
           id: 1,
         })
       );
