@@ -62,7 +62,7 @@ export default function CustomRealtime() {
       contractWs.send(
         JSON.stringify({
           method: "SUBSCRIBE",
-          params: symbols.map((s) => ${s}@ticker),
+          params: symbols.map((s) => `${s}@ticker`), // 修复了这里
           id: 2,
         })
       );
@@ -145,3 +145,4 @@ export default function CustomRealtime() {
       </table>
     </div>
   );
+}
