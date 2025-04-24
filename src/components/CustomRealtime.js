@@ -45,122 +45,115 @@ export default function CustomRealtime() {
   };
 
   useEffect(() => {
-  const spotWs = new WebSocket(spotWsBase);
-  wsRefs.current.spot = spotWs;
+    const spotWs = new WebSocket(spotWsBase);
+    wsRefs.current.spot = spotWs;
 
-  spotWs.onopen = () => {
-    spotWs.send(
-      JSON.stringify({
-        method: "SUBSCRIBE",
-        params: symbols.map((s) => `${s}@ticker`),
-        id: 1,
-      })
-    );
-  };
-
-  spotWs.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    const symbol = msg.s?.toLowerCase();
-    const price = parseFloat(msg.c);
-    if (symbol && !isNaN(price)) {
-      spotPrices.current[symbol] = price;
-    }
-  };
-
-  const contractWs = new WebSocket(contractWsBase);
-  wsRefs.current.contract = contractWs;
-
-  contractWs.onopen = () => {
-    contractWs.send(
-      JSON.stringify({
-        method: "SUBSCRIBE",
-        params: symbols.map((s) => `${s}@ticker`),
-        id: 2,
-      })
-    );
-  };
-
-  contractWs.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    const symbolRaw = msg.s;
-    const contractPriceRaw = msg.c;
-    const fundingRateRaw = msg.r;
-
-    // 🔍 Debug log
-    console.log("合约返回：", {
-      symbolRaw,
-      contractPriceRaw,
-      fundingRateRaw,
-    });
-
-    const symbolKey = symbolRaw?.toLowerCase();
-    const spotPrice = spotPrices.current[symbolKey];
-
-    if (!spotPrice) {
-      console.warn("跳过该合约数据，因为未找到现货价格", symbolKey);
-      return;
-    }
-
-    const contract = parseFloat(contractPriceRaw);
-    const predictedFundingRate = parseFloat(fundingRateRaw);
-
-    // ⛔ 检查 NaN 问题
-    if (isNaN(predictedFundingRate)) {
-      console.error("❌ fundingRate 为 NaN：", { symbolRaw, fundingRateRaw });
-      return;
-    }
-
-    const basisRate = ((contract - spotPrice) / spotPrice) * 100;
-    const score = calculateScore(basisRate, predictedFundingRate, k, 8);
-
-    const now = new Date();
-    const row = {
-      time: now,
-      coin: symbolRaw.toUpperCase().replace("USDT", ""),
-      spotPrice: spotPrice,
-      contractPrice: contract,
-      basisRate: basisRate.toFixed(3),
-      fundingRate: (predictedFundingRate * 100).toFixed(4),
-      riskFreeRate: score,
+    spotWs.onopen = () => {
+      spotWs.send(
+        JSON.stringify({
+          method: "SUBSCRIBE",
+          params: symbols.map((s) => `${s}@ticker`),
+          id: 1,
+        })
+      );
     };
 
-    setData((prev) => [row, ...prev.slice(0, 9)]);
+    spotWs.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      const symbol = msg.s?.toLowerCase();
+      const price = parseFloat(msg.c);
+      if (symbol && !isNaN(price)) {
+        spotPrices.current[symbol] = price;
+      }
+    };
 
-    const maxPrice = Math.max(spotPrice, contract);
-    const maxPosition = (k * n) / maxPrice;
+    const contractWs = new WebSocket(contractWsBase);
+    wsRefs.current.contract = contractWs;
 
-    let upperPrice, lowerPrice;
-    if (score > 0) {
-      upperPrice = Math.max(
-        spotPrice * (1 + (1 - a) / k),
-        contract * (1 - (1 - b) / k)
+    contractWs.onopen = () => {
+      contractWs.send(
+        JSON.stringify({
+          method: "SUBSCRIBE",
+          params: symbols.map((s) => `${s}@ticker`),
+          id: 2,
+        })
       );
-      lowerPrice = Math.min(
-        spotPrice * (1 + (1 - a) / k),
-        contract * (1 - (1 - b) / k)
-      );
-    } else {
-      upperPrice = Math.max(
-        spotPrice * (1 - (1 - a) / k),
-        contract * (1 + (1 - b) / k)
-      );
-      lowerPrice = Math.min(
-        spotPrice * (1 - (1 - a) / k),
-        contract * (1 + (1 - b) / k)
-      );
-    }
+    };
 
-    setMaxPosition(maxPosition);
-    setUpperPrice(upperPrice);
-    setLowerPrice(lowerPrice);
-  };
+    contractWs.onmessage = (event) => {
+      // 调试原始返回
+      console.log("🟡 原始 event.data：", event.data);
 
-  return () => {
-    wsRefs.current.spot?.close();
-    wsRefs.current.contract?.close();
-  };
-}, [k, n, a, b, spotFeeRate, futureFeeRate, borrowRate, constantBasis, symbols]);
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch (error) {
+        console.error("❌ JSON 解析失败:", error);
+        return;
+      }
 
+      console.log("🔍 字段名列表：", Object.keys(data));
+
+      const symbolRaw = data.symbol || data.s || data.symbolRaw || "UNKNOWN";
+      const contractPriceRaw = data.contractPrice || data.p || data.contractPriceRaw || data.c;
+      const fundingRateRaw = data.fundingRate || data.fundingRateRaw || data.r;
+
+      console.log("🧩 提取字段 - symbolRaw:", symbolRaw, ", contractPriceRaw:", contractPriceRaw, ", fundingRateRaw:", fundingRateRaw);
+
+      const symbolKey = symbolRaw?.toLowerCase();
+      const spotPrice = spotPrices.current[symbolKey];
+
+      if (!spotPrice) {
+        console.warn("⚠️ 跳过该合约数据，因为未找到现货价格：", symbolKey);
+        return;
+      }
+
+      if (fundingRateRaw === undefined || isNaN(parseFloat(fundingRateRaw))) {
+        console.error("❌ fundingRate 为 NaN 或未定义：", fundingRateRaw);
+        return;
+      }
+
+      const contract = parseFloat(contractPriceRaw);
+      const predictedFundingRate = parseFloat(fundingRateRaw);
+      const basisRate = ((contract - spotPrice) / spotPrice) * 100;
+      const score = calculateScore(basisRate, predictedFundingRate, k, 8);
+
+      const now = new Date();
+      const row = {
+        time: now,
+        coin: symbolRaw.toUpperCase().replace("USDT", ""),
+        spotPrice: spotPrice,
+        contractPrice: contract,
+        basisRate: basisRate.toFixed(3),
+        fundingRate: (predictedFundingRate * 100).toFixed(4),
+        riskFreeRate: score,
+      };
+
+      console.log("✅ 成功处理数据：", row);
+      setData((prev) => [row, ...prev.slice(0, 9)]);
+
+      const maxPrice = Math.max(spotPrice, contract);
+      const maxPosition = (k * n) / maxPrice;
+
+      let upper, lower;
+      if (score > 0) {
+        upper = Math.max(spotPrice * (1 + (1 - a) / k), contract * (1 - (1 - b) / k));
+        lower = Math.min(spotPrice * (1 + (1 - a) / k), contract * (1 - (1 - b) / k));
+      } else {
+        upper = Math.max(spotPrice * (1 - (1 - a) / k), contract * (1 + (1 - b) / k));
+        lower = Math.min(spotPrice * (1 - (1 - a) / k), contract * (1 + (1 - b) / k));
+      }
+
+      setMaxPosition(maxPosition);
+      setUpperPrice(upper);
+      setLowerPrice(lower);
+    };
+
+    return () => {
+      wsRefs.current.spot?.close();
+      wsRefs.current.contract?.close();
+    };
+  }, [k, n, a, b, spotFeeRate, futureFeeRate, borrowRate, constantBasis, symbols]);
 
   return (
     <div className="container" style={{ textAlign: "center" }}>
@@ -179,7 +172,6 @@ export default function CustomRealtime() {
         </label>
       </div>
 
-      {/* 参数输入 */}
       {[
         ["本金 (n)", n, setN],
         ["杠杆 (k)", k, setK],
