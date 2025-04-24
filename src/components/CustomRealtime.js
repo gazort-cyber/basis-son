@@ -44,108 +44,101 @@ export default function CustomRealtime() {
     setSymbols(inputSymbols);
   };
 
- useEffect(() => {
-  const spotWs = new WebSocket(spotWsBase);
-  wsRefs.current.spot = spotWs;
-  spotWs.onopen = () => {
-    spotWs.send(
-      JSON.stringify({
-        method: "SUBSCRIBE",
-        params: symbols.map((s) => `${s}@ticker`), // 订阅现货市场的 ticker
-        id: 1,
-      })
-    );
-  };
-
-  spotWs.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    const symbol = msg.s?.toLowerCase();
-    const price = parseFloat(msg.c);
-    if (symbol && price) {
-      spotPrices.current[symbol] = price;
-    }
-  };
-
-  // 订阅合约市场的 markPrice 和资金费率数据
-  const contractWs = new WebSocket(contractWsBase);
-  wsRefs.current.contract = contractWs;
-  contractWs.onopen = () => {
-    contractWs.send(
-      JSON.stringify({
-        method: "SUBSCRIBE",
-        params: symbols.map((s) => `${s}@markPrice@1s`), // 订阅合约市场的 markPrice（每秒更新）
-        id: 2,
-      })
-    );
-  };
-
-  contractWs.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    const { s: symbol, p: contractPrice, r: fundingRate } = msg; // 获取合约价格和资金费率
-
-    const symbolKey = symbol?.toLowerCase();
-    const spotPrice = spotPrices.current[symbolKey];
-
-    if (!spotPrice) return;
-
-    const contract = parseFloat(contractPrice); // 合约价格
-    const predictedFundingRate = parseFloat(fundingRate); // 资金费率
-
-    // 计算基差率
-    const basisRate = ((contract - spotPrice) / spotPrice) * 100;
-
-    // 计算无风险利率（示例逻辑）
-    const score = calculateScore(basisRate, predictedFundingRate, k, 8);
-
-    const now = new Date();
-    const row = {
-      time: now,
-      coin: symbol.toUpperCase().replace("USDT", ""),
-      spotPrice: spotPrice,
-      contractPrice: contract,
-      basisRate: basisRate.toFixed(3),
-      fundingRate: (predictedFundingRate * 100).toFixed(4),
-      riskFreeRate: score,
+  useEffect(() => {
+    const spotWs = new WebSocket(spotWsBase);
+    wsRefs.current.spot = spotWs;
+    spotWs.onopen = () => {
+      spotWs.send(
+        JSON.stringify({
+          method: "SUBSCRIBE",
+          params: symbols.map((s) => `${s}@ticker`),
+          id: 1,
+        })
+      );
+    };
+    spotWs.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      const symbol = msg.s?.toLowerCase();
+      const price = parseFloat(msg.c);
+      if (symbol && price) {
+        spotPrices.current[symbol] = price;
+      }
     };
 
-    // 更新表格数据
-    setData((prev) => [row, ...prev.slice(0, 9)]);
-
-    const maxPrice = Math.max(spotPrice, contract);
-    const maxPosition = (k * n) / maxPrice;
-
-    let upperPrice, lowerPrice;
-    if (score > 0) {
-      upperPrice = Math.max(
-        spotPrice * (1 + (1 - a) / k),
-        contract * (1 - (1 - b) / k)
+    const contractWs = new WebSocket(contractWsBase);
+    wsRefs.current.contract = contractWs;
+    contractWs.onopen = () => {
+      contractWs.send(
+        JSON.stringify({
+          method: "SUBSCRIBE",
+          params: [
+            ...symbols.map((s) => `${s}@miniTicker`),  // 合约价格（c）
+            ...symbols.map((s) => `${s}@markPrice`)  // 资金费率（r）
+          ],
+          id: 2,
+        })
       );
-      lowerPrice = Math.min(
-        spotPrice * (1 + (1 - a) / k),
-        contract * (1 - (1 - b) / k)
-      );
-    } else {
-      upperPrice = Math.max(
-        spotPrice * (1 - (1 - a) / k),
-        contract * (1 + (1 - b) / k)
-      );
-      lowerPrice = Math.min(
-        spotPrice * (1 - (1 - a) / k),
-        contract * (1 + (1 - b) / k)
-      );
-    }
+    };
+    contractWs.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      const { s: symbol, c: contractPrice, r: fundingRate } = msg;
+      const symbolKey = symbol?.toLowerCase();
+      const spotPrice = spotPrices.current[symbolKey];
 
-    setMaxPosition(maxPosition);
-    setUpperPrice(upperPrice);
-    setLowerPrice(lowerPrice);
-  };
+      if (!spotPrice) return;
 
-  return () => {
-    wsRefs.current.spot?.close();
-    wsRefs.current.contract?.close();
-  };
-}, [k, n, a, b, spotFeeRate, futureFeeRate, borrowRate, constantBasis, symbols]);
+      const contract = parseFloat(contractPrice);
+      const basisRate = ((contract - spotPrice) / spotPrice) * 100;
+      const predictedFundingRate = parseFloat(fundingRate);
 
+      const score = calculateScore(basisRate, predictedFundingRate, k, 8);
+
+      const now = new Date();
+      const row = {
+        time: now,
+        coin: symbol.toUpperCase().replace("USDT", ""),
+        spotPrice: spotPrice,
+        contractPrice: contract,
+        basisRate: basisRate.toFixed(3),
+        fundingRate: (predictedFundingRate * 100).toFixed(4),
+        riskFreeRate: score,
+      };
+      setData((prev) => [row, ...prev.slice(0, 9)]);
+
+      const maxPrice = Math.max(spotPrice, contract);
+      const maxPosition = (k * n) / maxPrice;
+
+      let upperPrice, lowerPrice;
+      if (score > 0) {
+        upperPrice = Math.max(
+          spotPrice * (1 + (1 - a) / k),
+          contract * (1 - (1 - b) / k)
+        );
+        lowerPrice = Math.min(
+          spotPrice * (1 + (1 - a) / k),
+          contract * (1 - (1 - b) / k)
+        );
+      } else {
+        upperPrice = Math.max(
+          spotPrice * (1 - (1 - a) / k),
+          contract * (1 + (1 - b) / k)
+        );
+        lowerPrice = Math.min(
+          spotPrice * (1 - (1 - a) / k),
+          contract * (1 + (1 - b) / k)
+        );
+      }
+
+      setMaxPosition(maxPosition);
+      setUpperPrice(upperPrice);
+      setLowerPrice(lowerPrice);
+    };
+
+    return () => {
+      wsRefs.current.spot?.close();
+      wsRefs.current.contract?.close();
+    };
+  }, [k, n, a, b, spotFeeRate, futureFeeRate, borrowRate, constantBasis, symbols]);
 
   return (
     <div className="container" style={{ textAlign: "center" }}>
@@ -165,16 +158,7 @@ export default function CustomRealtime() {
       </div>
 
       {/* 参数输入 */}
-      {[
-        ["本金 (n)", n, setN],
-        ["杠杆 (k)", k, setK],
-        ["现货滑点 (a)", a, setA],
-        ["合约滑点 (b)", b, setB],
-        ["现货手续费", spotFeeRate, setSpotFeeRate],
-        ["合约手续费", futureFeeRate, setFutureFeeRate],
-        ["借贷利率", borrowRate, setBorrowRate],
-        ["常驻基差", constantBasis, setConstantBasis],
-      ].map(([label, val, setter], idx) => (
+      {[["本金 (n)", n, setN], ["杠杆 (k)", k, setK], ["现货滑点 (a)", a, setA], ["合约滑点 (b)", b, setB], ["现货手续费", spotFeeRate, setSpotFeeRate], ["合约手续费", futureFeeRate, setFutureFeeRate], ["借贷利率", borrowRate, setBorrowRate], ["常驻基差", constantBasis, setConstantBasis]].map(([label, val, setter], idx) => (
         <div key={idx} style={{ marginBottom: "10px" }}>
           <label>
             {label}:
@@ -236,4 +220,4 @@ const thStyle = {
 const tdStyle = {
   border: "1px solid black",
   padding: "10px",
-}; 
+};
