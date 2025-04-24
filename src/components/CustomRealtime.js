@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
 
-// 参考值
 const spotWsBase = "wss://stream.binance.com:9443/ws";
 const contractWsBase = "wss://fstream.binance.com/ws";
 
@@ -9,43 +8,40 @@ export default function CustomRealtime() {
   const spotPrices = useRef({});
   const wsRefs = useRef({ spot: null, contract: null });
 
-  // 参数管理
-  const [n, setN] = useState(300); // 本金
-  const [k, setK] = useState(5); // 杠杆
-  const [a, setA] = useState(0.4); // 现货滑点
-  const [b, setB] = useState(0.08); // 合约滑点
-  const [spotFeeRate, setSpotFeeRate] = useState(0.08);  // 现货手续费
-  const [futureFeeRate, setFutureFeeRate] = useState(0.1); // 合约手续费
-  const [borrowRate, setBorrowRate] = useState(0.01);     // 借贷利率
-  const [constantBasis, setConstantBasis] = useState(0.1); // 常驻基差
-  const [selectedSymbol, setSelectedSymbol] = useState('btc'); // 默认选择BTC
-  const [symbols, setSymbols] = useState(["btcusdt", "ethusdt"]); // 动态的符号列表
+  const [n, setN] = useState(300);
+  const [k, setK] = useState(5);
+  const [a, setA] = useState(0.4);
+  const [b, setB] = useState(0.08);
+  const [spotFeeRate, setSpotFeeRate] = useState(0.08);
+  const [futureFeeRate, setFutureFeeRate] = useState(0.1);
+  const [borrowRate, setBorrowRate] = useState(0.01);
+  const [constantBasis, setConstantBasis] = useState(0.1);
+  const [selectedSymbol, setSelectedSymbol] = useState("btc");
+  const [symbols, setSymbols] = useState(["btcusdt", "ethusdt"]);
   const [maxPosition, setMaxPosition] = useState(null);
   const [upperPrice, setUpperPrice] = useState(null);
   const [lowerPrice, setLowerPrice] = useState(null);
 
-  const [manualSpotPrice, setManualSpotPrice] = useState("");  // 手动现货价格
-  const [manualFuturePrice, setManualFuturePrice] = useState("");  // 手动合约价格
-
   const calculateScore = (basisRate, predictedFundingRate, leverage, periodNum) => {
-    const tradingCost = (spotFeeRate + futureFeeRate) * leverage + borrowRate * leverage * periodNum / 2;
-    const adjustedBasis = Math.abs(constantBasis) > Math.abs(basisRate) ? basisRate : basisRate - Math.sign(basisRate) * constantBasis;
+    const tradingCost =
+      (spotFeeRate + futureFeeRate) * leverage + borrowRate * leverage * periodNum / 2;
+    const adjustedBasis =
+      Math.abs(constantBasis) > Math.abs(basisRate)
+        ? basisRate
+        : basisRate - Math.sign(basisRate) * constantBasis;
 
     const grossProfit = (adjustedBasis - predictedFundingRate) * leverage / 2;
-    const rawScore = Math.abs(grossProfit) > tradingCost
-      ? grossProfit - tradingCost
-      : grossProfit;
+    const rawScore =
+      Math.abs(grossProfit) > tradingCost ? grossProfit - tradingCost : grossProfit;
 
-    return rawScore.toFixed(4);
+    return rawScore.toFixed(3);
   };
 
   const handleSymbolInput = () => {
-    // 1. 将输入的符号分割成数组，并补全每个符号的 USDT 后缀
     const inputSymbols = selectedSymbol
-      .split(",") // 假设用户输入多个币种，用逗号分隔
-      .map(symbol => symbol.trim().toLowerCase() + 'usdt'); // 补全USDT后缀
-
-    setSymbols(inputSymbols); // 更新符号列表
+      .split(",")
+      .map((symbol) => symbol.trim().toLowerCase() + "usdt");
+    setSymbols(inputSymbols);
   };
 
   useEffect(() => {
@@ -87,6 +83,7 @@ export default function CustomRealtime() {
       const spotPrice = spotPrices.current[symbolKey];
 
       if (!spotPrice) return;
+
       const contract = parseFloat(contractPrice);
       const basisRate = ((contract - spotPrice) / spotPrice) * 100;
       const predictedFundingRate = parseFloat(fundingRate);
@@ -97,9 +94,9 @@ export default function CustomRealtime() {
       const row = {
         time: now,
         coin: symbol.toUpperCase().replace("USDT", ""),
-        spotPrice: spotPrice.toFixed(4),
-        contractPrice: contract.toFixed(4),
-        basisRate: basisRate.toFixed(2),
+        spotPrice: spotPrice,
+        contractPrice: contract,
+        basisRate: basisRate.toFixed(3),
         fundingRate: (predictedFundingRate * 100).toFixed(4),
         riskFreeRate: score,
       };
@@ -110,11 +107,23 @@ export default function CustomRealtime() {
 
       let upperPrice, lowerPrice;
       if (score > 0) {
-        upperPrice = Math.max(spotPrice * (1 + (1 - a) / k), contract * (1 - (1 - b) / k));
-        lowerPrice = Math.min(spotPrice * (1 + (1 - a) / k), contract * (1 - (1 - b) / k));
+        upperPrice = Math.max(
+          spotPrice * (1 + (1 - a) / k),
+          contract * (1 - (1 - b) / k)
+        );
+        lowerPrice = Math.min(
+          spotPrice * (1 + (1 - a) / k),
+          contract * (1 - (1 - b) / k)
+        );
       } else {
-        upperPrice = Math.max(spotPrice * (1 - (1 - a) / k), contract * (1 + (1 - b) / k));
-        lowerPrice = Math.min(spotPrice * (1 - (1 - a) / k), contract * (1 + (1 - b) / k));
+        upperPrice = Math.max(
+          spotPrice * (1 - (1 - a) / k),
+          contract * (1 + (1 - b) / k)
+        );
+        lowerPrice = Math.min(
+          spotPrice * (1 - (1 - a) / k),
+          contract * (1 + (1 - b) / k)
+        );
       }
 
       setMaxPosition(maxPosition);
@@ -129,9 +138,8 @@ export default function CustomRealtime() {
   }, [k, n, a, b, spotFeeRate, futureFeeRate, borrowRate, constantBasis, symbols]);
 
   return (
-    <div className="container" style={{ textAlign: 'center' }}>
-      {/* 输入框部分 */}
-      <div style={{ marginBottom: '20px' }}>
+    <div className="container" style={{ textAlign: "center" }}>
+      <div style={{ marginBottom: "20px" }}>
         <label>
           选择币种:
           <input
@@ -140,138 +148,66 @@ export default function CustomRealtime() {
             onChange={(e) => setSelectedSymbol(e.target.value)}
             placeholder="请输入币种（例如 BTC,ETH）"
           />
-          <button onClick={handleSymbolInput} style={{ marginLeft: '10px' }}>查询</button>
+          <button onClick={handleSymbolInput} style={{ marginLeft: "10px" }}>
+            查询
+          </button>
         </label>
       </div>
 
-      {/* 用户自定义参数输入框 */}
-      <div style={{ marginBottom: '10px' }}>
-        <label>
-          本金 (n):
-          <input
-            type="number"
-            value={n}
-            onChange={(e) => setN(Number(e.target.value))}
-            min="0"
-          />
-        </label>
-      </div>
+      {/* 参数输入 */}
+      {[
+        ["本金 (n)", n, setN],
+        ["杠杆 (k)", k, setK],
+        ["现货滑点 (a)", a, setA],
+        ["合约滑点 (b)", b, setB],
+        ["现货手续费", spotFeeRate, setSpotFeeRate],
+        ["合约手续费", futureFeeRate, setFutureFeeRate],
+        ["借贷利率", borrowRate, setBorrowRate],
+        ["常驻基差", constantBasis, setConstantBasis],
+      ].map(([label, val, setter], idx) => (
+        <div key={idx} style={{ marginBottom: "10px" }}>
+          <label>
+            {label}:
+            <input
+              type="number"
+              value={val}
+              onChange={(e) => setter(Number(e.target.value))}
+              step="0.01"
+              min="0"
+            />
+          </label>
+        </div>
+      ))}
 
-      <div style={{ marginBottom: '10px' }}>
-        <label>
-          杠杆 (k):
-          <input
-            type="number"
-            value={k}
-            onChange={(e) => setK(Number(e.target.value))}
-            min="1"
-          />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: '10px' }}>
-        <label>
-          现货滑点 (a):
-          <input
-            type="number"
-            value={a}
-            onChange={(e) => setA(Number(e.target.value))}
-            step="0.01"
-            min="0"
-            max="1"
-          />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: '10px' }}>
-        <label>
-          合约滑点 (b):
-          <input
-            type="number"
-            value={b}
-            onChange={(e) => setB(Number(e.target.value))}
-            step="0.01"
-            min="0"
-            max="1"
-          />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: '10px' }}>
-        <label>
-          现货手续费:
-          <input
-            type="number"
-            value={spotFeeRate}
-            onChange={(e) => setSpotFeeRate(Number(e.target.value))}
-            step="0.01"
-            min="0"
-          />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: '10px' }}>
-        <label>
-          合约手续费:
-          <input
-            type="number"
-            value={futureFeeRate}
-            onChange={(e) => setFutureFeeRate(Number(e.target.value))}
-            step="0.01"
-            min="0"
-          />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: '10px' }}>
-        <label>
-          借贷利率:
-          <input
-            type="number"
-            value={borrowRate}
-            onChange={(e) => setBorrowRate(Number(e.target.value))}
-            step="0.01"
-            min="0"
-          />
-        </label>
-      </div>
-
-      <div style={{ marginBottom: '10px' }}>
-        <label>
-          常驻基差:
-          <input
-            type="number"
-            value={constantBasis}
-            onChange={(e) => setConstantBasis(Number(e.target.value))}
-            step="0.01"
-            min="0"
-          />
-        </label>
-      </div>
-
-      {/* 显示结果的表格 */}
-      <table style={{ margin: '20px auto', borderCollapse: 'collapse' }}>
+      <table
+        style={{
+          margin: "20px auto",
+          borderCollapse: "collapse",
+          width: "95%",
+          border: "1px solid black",
+        }}
+      >
         <thead>
           <tr>
-            <th>时间</th>
-            <th>币种</th>
-            <th>现货价</th>
-            <th>合约价</th>
-            <th>基差率%</th>
-            <th>预期资金费率%</th>
-            <th>无风险利率</th>
+            <th style={thStyle}>时间</th>
+            <th style={thStyle}>币种</th>
+            <th style={thStyle}>现货价</th>
+            <th style={thStyle}>合约价</th>
+            <th style={thStyle}>基差率%</th>
+            <th style={thStyle}>预期资金费率%</th>
+            <th style={thStyle}>无风险利率</th>
           </tr>
         </thead>
         <tbody>
           {data.map((row, i) => (
             <tr key={i}>
-              <td>{new Date(row.time).toLocaleTimeString()}</td>
-              <td>{row.coin}</td>
-              <td>{row.spotPrice}</td>
-              <td>{row.contractPrice}</td>
-              <td>{row.basisRate}</td>
-              <td>{row.fundingRate}</td>
-              <td>{row.riskFreeRate}</td>
+              <td style={tdStyle}>{new Date(row.time).toLocaleTimeString()}</td>
+              <td style={tdStyle}>{row.coin}</td>
+              <td style={tdStyle}>{row.spotPrice}</td>
+              <td style={tdStyle}>{row.contractPrice}</td>
+              <td style={tdStyle}>{row.basisRate}</td>
+              <td style={tdStyle}>{row.fundingRate}</td>
+              <td style={tdStyle}>{row.riskFreeRate}</td>
             </tr>
           ))}
         </tbody>
@@ -279,3 +215,15 @@ export default function CustomRealtime() {
     </div>
   );
 }
+
+const thStyle = {
+  border: "1px solid black",
+  padding: "10px",
+  fontWeight: "bold",
+  background: "#f2f2f2",
+};
+
+const tdStyle = {
+  border: "1px solid black",
+  padding: "10px",
+};
